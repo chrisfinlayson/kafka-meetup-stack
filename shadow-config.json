@@ -123,12 +123,14 @@
                     "expr": "#{Address.state}"
                 },
                 "contactLastName": {
-                    "_gen": "string",
-                    "expr": "#{Name.lastName}"
+                    "_gen": "lookup",
+                    "topic": "OrderEventStream",
+                    "path": ["value", "contactLastName"]
                 },
                 "contactFirstName": {
-                    "_gen": "string",
-                    "expr": "#{Name.firstName}"
+                    "_gen": "lookup",
+                    "topic": "OrderEventStream",
+                    "path": ["value", "contactFirstName"]
                 }
             },
             "localConfigs": {
