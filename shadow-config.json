@@ -3,12 +3,15 @@
         {
             "topic": "OrderEventStream",
             "key": {
-                "orderNumber": {
+                "orderID": {
                     "_gen": "sequentialInteger"
                 }
             },
             "value": {
                 "table": "Order",
+                "orderID": {
+                    "_gen": "sequentialInteger"
+                },
                 "orderDate": {
                     "_gen": "now"
                 },
@@ -16,17 +19,10 @@
                     "_gen": "oneOf",
                     "choices": ["OrderPlaced", "OrderUpdated", "OrderCancelled"]
                 },
-                "customerName": {
-                    "_gen": "string",
-                    "expr": "#{Name.fullName}"
-                },
-                "contactLastName": {
-                    "_gen": "string",
-                    "expr": "#{Name.lastName}"
-                },
-                "contactFirstName": {
-                    "_gen": "string",
-                    "expr": "#{Name.firstName}"
+                "customerID": {
+                    "_gen": "lookup",
+                    "topic": "CustomerEventStream",
+                    "path": ["key", "customerID"]
                 }
             },
             "localConfigs": {
@@ -38,32 +34,36 @@
         {
             "topic": "OrderLineEventStream",
             "key": {
-                "orderLineNumber": {
+                "orderLineID": {
                     "_gen": "sequentialInteger"
                 }
             },
             "value": {
                 "table": "OrderLine",
+                "orderLineID": {
+                    "_gen": "sequentialInteger"
+                },
                 "orderNumber": {
                     "_gen": "lookup",
                     "topic": "OrderEventStream",
                     "path": ["key", "orderNumber"]
                 },
-                "productCode": {
-                    "_gen": "string",
-                    "expr": "#{Commerce.productName}"
+                "productID": {
+                    "_gen": "lookup",
+                    "topic": "ProductEventStream",
+                    "path": ["key", "productID"]
                 },
                 "quantityOrdered": {
                     "_gen": "uniformDistribution",
-                    "bounds": [1, 100]
+                    "bounds": [1, 5]
                 },
                 "priceEach": {
                     "_gen": "uniformDistribution",
-                    "bounds": [1, 1000]
+                    "bounds": [800, 1000]
                 },
                 "sales": {
                     "_gen": "uniformDistribution",
-                    "bounds": [1, 10000]
+                    "bounds": [200, 10000]
                 },
                 "msrp": {
                     "_gen": "uniformDistribution",
@@ -83,13 +83,19 @@
         {
             "topic": "CustomerEventStream",
             "key": {
-                "customerName": {
-                    "_gen": "string",
-                    "expr": "#{Name.fullName}"
+                "customerID": {
+                    "_gen": "sequentialInteger"
                 }
             },
             "value": {
                 "table": "Customer",
+                "customerID": {
+                    "_gen": "sequentialInteger"
+                },
+                "customerName": {
+                    "_gen": "string",
+                    "expr": "#{Name.fullName}"
+                },
                 "phone": {
                     "_gen": "string",
                     "expr": "#{PhoneNumber.phoneNumber}"
@@ -121,16 +127,6 @@
                 "territory": {
                     "_gen": "string",
                     "expr": "#{Address.state}"
-                },
-                "contactLastName": {
-                    "_gen": "lookup",
-                    "topic": "OrderEventStream",
-                    "path": ["value", "contactLastName"]
-                },
-                "contactFirstName": {
-                    "_gen": "lookup",
-                    "topic": "OrderEventStream",
-                    "path": ["value", "contactFirstName"]
                 }
             },
             "localConfigs": {
@@ -142,13 +138,19 @@
         {
             "topic": "ProductEventStream",
             "key": {
-                "productCode": {
-                    "_gen": "string",
-                    "expr": "#{Commerce.productName}"
+                "productID": {
+                    "_gen": "sequentialInteger"
                 }
             },
             "value": {
                 "table": "Product",
+                "productID": {
+                    "_gen": "sequentialInteger"
+                },
+                "productCode": {
+                    "_gen": "string",
+                    "expr": "#{Commerce.productName}"
+                },
                 "productLine": {
                     "_gen": "string",
                     "expr": "#{Commerce.department}"
@@ -167,7 +169,7 @@
         {
             "topic": "OrderStatusEventStream",
             "key": {
-                "orderNumber": {
+                "orderID": {
                     "_gen": "lookup",
                     "topic": "OrderEventStream",
                     "path": ["key", "orderNumber"]
@@ -178,6 +180,11 @@
                 "status": {
                     "_gen": "oneOf",
                     "choices": ["OrderPlaced", "OrderUpdated", "OrderCancelled"]
+                },
+                "orderID": {
+                    "_gen": "lookup",
+                    "topic": "OrderEventStream",
+                    "path": ["key", "orderID"]
                 }
             },
             "localConfigs": {

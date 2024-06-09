@@ -1,13 +1,13 @@
 version: '3.7'
 
-x-superset-image: &superset-image apachesuperset.docker.scarf.sh/apache/superset:${TAG:-latest}
-x-superset-depends-on: &superset-depends-on
-  - db
-  - redis
-x-superset-volumes:
-  &superset-volumes # /app/pythonpath_docker will be appended to the PYTHONPATH in the final container
-  - ./superset/docker:/app/docker
-  - superset_home:/app/superset_home
+# x-superset-image: &superset-image apachesuperset.docker.scarf.sh/apache/superset:${TAG:-latest}
+# x-superset-depends-on: &superset-depends-on
+#   - db
+#   - redis
+# x-superset-volumes:
+#   &superset-volumes # /app/pythonpath_docker will be appended to the PYTHONPATH in the final container
+#   - ./superset/docker:/app/docker
+#   - superset_home:/app/superset_home
 
 services:
   zookeeper:
@@ -142,25 +142,25 @@ services:
     networks:
       dremio-kafka-connect:
 
-  redis:
-    image: redis:7
-    container_name: superset_cache
-    restart: unless-stopped
-    volumes:
-      - redis:/data
-    networks:
-      - dremio-kafka-connect
+  # redis:
+  #   image: redis:7
+  #   container_name: superset_cache
+  #   restart: unless-stopped
+  #   volumes:
+  #     - redis:/data
+  #   networks:
+  #     - dremio-kafka-connect
 
-  db:
-    env_file: superset/docker/.env
-    image: postgres:15
-    container_name: superset_db
-    restart: unless-stopped
-    volumes:
-      - db_home:/var/lib/postgresql/data
-      - ./docker/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
-    networks:
-      - dremio-kafka-connect
+  # db:
+  #   env_file: superset/docker/.env
+  #   image: postgres:15
+  #   container_name: superset_db
+  #   restart: unless-stopped
+  #   volumes:
+  #     - db_home:/var/lib/postgresql/data
+  #     - ./docker/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+  #   networks:
+  #     - dremio-kafka-connect
 
   # superset:
   #   env_file: superset/docker/.env
@@ -236,13 +236,13 @@ services:
    entrypoint: ["java", "-jar", "/home/shadowtraffic.jar"]
    command: ["--config", "/workspace/shadow-config.json"]
 
-volumes:
-  superset_home:
-    external: false
-  db_home:
-    external: false
-  redis:
-    external: false
+# volumes:
+#   superset_home:
+#     external: false
+#   db_home:
+#     external: false
+#   redis:
+#     external: false
 
 networks:
   dremio-kafka-connect:
