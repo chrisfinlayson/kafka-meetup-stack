@@ -1,0 +1,248 @@
+version: '3.7'
+
+x-superset-image: &superset-image apachesuperset.docker.scarf.sh/apache/superset:${TAG:-latest}
+x-superset-depends-on: &superset-depends-on
+  - db
+  - redis
+x-superset-volumes:
+  &superset-volumes # /app/pythonpath_docker will be appended to the PYTHONPATH in the final container
+  - ./superset/docker:/app/docker
+  - superset_home:/app/superset_home
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - dremio-kafka-connect
+    
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    networks:
+      - dremio-kafka-connect
+
+  kafka-connect:
+    build:
+      context: .
+      dockerfile: dockerfile
+    container_name: kafka-connect
+    depends_on:
+      - kafka
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:29092
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: kafka-connect-group
+      CONNECT_CONFIG_STORAGE_TOPIC: kafka-connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: kafka-connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: kafka-connect-status
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_PLUGINS_DIR: /usr/share/java
+    networks:
+      - dremio-kafka-connect
+
+  kafka-rest-proxy:
+    image: confluentinc/cp-kafka-rest:latest
+    container_name: kafka-rest-proxy
+    depends_on:
+      - kafka
+      - zookeeper
+    ports:
+      - "8082:8082"
+    environment:
+      KAFKA_REST_HOST_NAME: kafka-rest-proxy
+      KAFKA_REST_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:29092
+      KAFKA_REST_LISTENERS: http://0.0.0.0:8082
+      KAFKA_REST_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      KAFKA_LOG4J_LOGGERS: "org.apache.kafka.connect.runtime=DEBUG,io.tabular.iceberg.connect=DEBUG"
+      KAFKA_LOG4J_ROOT_LOGLEVEL: "DEBUG"
+      CONNECT_LOG4J_ROOT_LOGLEVEL: "DEBUG"
+    networks:
+      - dremio-kafka-connect
+
+  nessie:
+    image: projectnessie/nessie:latest
+    container_name: nessie
+    ports:
+      - "19120:19120"
+    networks:
+      - dremio-kafka-connect
+
+  dremio:
+    image: dremio/dremio-oss
+    container_name: dremio
+    ports:
+      - 9047:9047
+      - 31010:31010
+      - 32010:32010
+      - 45678:45678
+    environment:
+      - DREMIO_JAVA_SERVER_EXTRA_OPTS=-Dpaths.dist=file:///opt/dremio/data/dist
+    depends_on:
+      - nessie
+    networks:
+      - dremio-kafka-connect
+  # Minio Storage Server
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+      - MINIO_DOMAIN=storage
+      - MINIO_REGION_NAME=us-east-1
+      - MINIO_REGION=us-east-1
+    networks:
+      dremio-kafka-connect:
+    ports:
+      - 9001:9001
+      - 9000:9000
+    command: ["server", "/data", "--console-address", ":9001"]
+    # Minio Setup for creating buckets
+  minio-setup:
+    image: minio/mc:latest
+    container_name: minio-setup
+    depends_on:
+      - minio
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+    entrypoint: >
+      /bin/sh -c "
+      echo 'Waiting for MinIO to start...' &&
+      /bin/sleep 10 &&
+      mc alias set minio http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      mc mb minio/warehouse &&
+      mc mb minio/lakehouse &&
+      echo 'Buckets created and data loaded.'"
+    networks:
+      dremio-kafka-connect:
+
+  redis:
+    image: redis:7
+    container_name: superset_cache
+    restart: unless-stopped
+    volumes:
+      - redis:/data
+    networks:
+      - dremio-kafka-connect
+
+  db:
+    env_file: superset/docker/.env
+    image: postgres:15
+    container_name: superset_db
+    restart: unless-stopped
+    volumes:
+      - db_home:/var/lib/postgresql/data
+      - ./docker/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    networks:
+      - dremio-kafka-connect
+
+  # superset:
+  #   env_file: superset/docker/.env
+  #   image: *superset-image
+  #   container_name: superset_app
+  #   command: ["/app/docker/docker-bootstrap.sh", "app-gunicorn"]
+  #   user: "root"
+  #   restart: unless-stopped
+  #   ports:
+  #     - 8088:8088
+  #   depends_on: *superset-depends-on
+  #   volumes: *superset-volumes
+  #   # network_mode: host
+  #   networks:
+  #     - dremio-kafka-connect
+
+  # superset-init:
+  #   image: *superset-image
+  #   container_name: superset_init
+  #   command: ["/app/docker/docker-init.sh"]
+  #   env_file: superset/docker/.env
+  #   depends_on: *superset-depends-on
+  #   user: "root"
+  #   volumes: *superset-volumes
+  #   healthcheck:
+  #     disable: true
+  #   # network_mode: host
+  #   networks:
+  #     - dremio-kafka-connect
+
+  # superset-worker:
+  #   image: *superset-image
+  #   container_name: superset_worker
+  #   command: ["/app/docker/docker-bootstrap.sh", "worker"]
+  #   env_file: superset/docker/.env
+  #   restart: unless-stopped
+  #   depends_on: *superset-depends-on
+  #   user: "root"
+  #   volumes: *superset-volumes
+  #   healthcheck:
+  #     test:
+  #       [
+  #         "CMD-SHELL",
+  #         "celery -A superset.tasks.celery_app:app inspect ping -d celery@$$HOSTNAME",
+  #       ]
+  #   # network_mode: host
+  #   networks:
+  #     - dremio-kafka-connect
+
+  # superset-worker-beat:
+  #   image: *superset-image
+  #   container_name: superset_worker_beat
+  #   command: ["/app/docker/docker-bootstrap.sh", "beat"]
+  #   env_file: superset/docker/.env  
+  #   restart: unless-stopped
+  #   depends_on: *superset-depends-on
+  #   user: "root"
+  #   volumes: *superset-volumes
+  #   healthcheck:
+  #     disable: true
+  #   # network_mode: host
+  #   networks:
+  #     - dremio-kafka-connect
+      
+  shadowtraffic:
+   container_name: shadowtraffic
+   network_mode: host
+   env_file:
+     - ./license.env
+   volumes:
+     - .:/workspace
+   image: shadowtraffic/shadowtraffic:latest
+   entrypoint: ["java", "-jar", "/home/shadowtraffic.jar"]
+   command: ["--config", "/workspace/shadow-config.json"]
+
+volumes:
+  superset_home:
+    external: false
+  db_home:
+    external: false
+  redis:
+    external: false
+
+networks:
+  dremio-kafka-connect:

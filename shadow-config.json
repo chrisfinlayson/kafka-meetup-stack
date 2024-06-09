@@ -1,0 +1,201 @@
+{
+    "generators": [
+        {
+            "topic": "OrderEventStream",
+            "key": {
+                "orderNumber": {
+                    "_gen": "sequentialInteger"
+                }
+            },
+            "value": {
+                "table": "Order",
+                "orderDate": {
+                    "_gen": "now"
+                },
+                "status": {
+                    "_gen": "oneOf",
+                    "choices": ["OrderPlaced", "OrderUpdated", "OrderCancelled"]
+                },
+                "customerName": {
+                    "_gen": "string",
+                    "expr": "#{Name.fullName}"
+                },
+                "contactLastName": {
+                    "_gen": "string",
+                    "expr": "#{Name.lastName}"
+                },
+                "contactFirstName": {
+                    "_gen": "string",
+                    "expr": "#{Name.firstName}"
+                }
+            },
+            "localConfigs": {
+                "throttle": {
+                    "ms": 500
+                }
+            }
+        },
+        {
+            "topic": "OrderLineEventStream",
+            "key": {
+                "orderLineNumber": {
+                    "_gen": "sequentialInteger"
+                }
+            },
+            "value": {
+                "table": "OrderLine",
+                "orderNumber": {
+                    "_gen": "lookup",
+                    "topic": "OrderEventStream",
+                    "path": ["key", "orderNumber"]
+                },
+                "productCode": {
+                    "_gen": "string",
+                    "expr": "#{Commerce.productName}"
+                },
+                "quantityOrdered": {
+                    "_gen": "uniformDistribution",
+                    "bounds": [1, 100]
+                },
+                "priceEach": {
+                    "_gen": "uniformDistribution",
+                    "bounds": [1, 1000]
+                },
+                "sales": {
+                    "_gen": "uniformDistribution",
+                    "bounds": [1, 10000]
+                },
+                "msrp": {
+                    "_gen": "uniformDistribution",
+                    "bounds": [1, 10000]
+                },
+                "dealSize": {
+                    "_gen": "oneOf",
+                    "choices": ["Small", "Medium", "Large"]
+                }
+            },
+            "localConfigs": {
+                "throttle": {
+                    "ms": 150
+                }
+            }
+        },
+        {
+            "topic": "CustomerEventStream",
+            "key": {
+                "customerName": {
+                    "_gen": "string",
+                    "expr": "#{Name.fullName}"
+                }
+            },
+            "value": {
+                "table": "Customer",
+                "phone": {
+                    "_gen": "string",
+                    "expr": "#{PhoneNumber.phoneNumber}"
+                },
+                "addressLine1": {
+                    "_gen": "string",
+                    "expr": "#{Address.streetAddress}"
+                },
+                "addressLine2": {
+                    "_gen": "string",
+                    "expr": "#{Address.secondaryAddress}"
+                },
+                "city": {
+                    "_gen": "string",
+                    "expr": "#{Address.city}"
+                },
+                "state": {
+                    "_gen": "string",
+                    "expr": "#{Address.state}"
+                },
+                "postalCode": {
+                    "_gen": "string",
+                    "expr": "#{Address.zipCode}"
+                },
+                "country": {
+                    "_gen": "string",
+                    "expr": "#{Address.country}"
+                },
+                "territory": {
+                    "_gen": "string",
+                    "expr": "#{Address.state}"
+                },
+                "contactLastName": {
+                    "_gen": "string",
+                    "expr": "#{Name.lastName}"
+                },
+                "contactFirstName": {
+                    "_gen": "string",
+                    "expr": "#{Name.firstName}"
+                }
+            },
+            "localConfigs": {
+                "throttle": {
+                    "ms": 800
+                }
+            }
+        },
+        {
+            "topic": "ProductEventStream",
+            "key": {
+                "productCode": {
+                    "_gen": "string",
+                    "expr": "#{Commerce.productName}"
+                }
+            },
+            "value": {
+                "table": "Product",
+                "productLine": {
+                    "_gen": "string",
+                    "expr": "#{Commerce.department}"
+                },
+                "msrp": {
+                    "_gen": "uniformDistribution",
+                    "bounds": [1, 10000]
+                }
+            },
+            "localConfigs": {
+                "throttle": {
+                    "ms": 800
+                }
+            }
+        },
+        {
+            "topic": "OrderStatusEventStream",
+            "key": {
+                "orderNumber": {
+                    "_gen": "lookup",
+                    "topic": "OrderEventStream",
+                    "path": ["key", "orderNumber"]
+                }
+            },
+            "value": {
+                "table": "OrderStatus",
+                "status": {
+                    "_gen": "oneOf",
+                    "choices": ["OrderPlaced", "OrderUpdated", "OrderCancelled"]
+                }
+            },
+            "localConfigs": {
+                "throttle": {
+                    "ms": 800
+                }
+            }
+        }
+    ],
+    "connections": {
+        "kafka": {
+            "kind": "kafka",
+            "topicPolicy": {
+                "policy": "dropAndCreate"
+            },
+            "producerConfigs": {
+                "bootstrap.servers": "localhost:9092",
+                "key.serializer": "io.shadowtraffic.kafka.serdes.JsonSerializer",
+                "value.serializer": "io.shadowtraffic.kafka.serdes.JsonSerializer"
+            }
+        }
+    }
+}
